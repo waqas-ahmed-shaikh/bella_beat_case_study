@@ -1,0 +1,278 @@
+---
+title: "Bellabeat Case Study"
+author: "Waqas"
+date: "2022-09-16"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    toc: yes
+    theme: united
+  pdf_document:
+    toc: yes
+---
+# About Company
+
+Bellabeat is high-tech manufacturer of health-focused products for women. Bellabeat is successful company but has great potential to enter into bigger market. Urška Sršen, cofounder and Chief Creative Officer of Bellabeat, believes that analyzing smart device fitness data could help unlock new growth opportunities for the company
+
+# Questions for analysis
+
+* What are some trends in smart device usage?
+
+* How could these trends apply to Bellabeat customers?
+
+* How could these trends help influence Bellabeat marketing strategy?
+
+# Business Task
+
+Identifying the trends in smart device usage for non-Bellabeat members and then analyze how the insights from the trend can be applied to Bellabeat customers.
+
+# Phase 1:- Ask
+
+**What is the problem that you are trying to solve?**
+
+I am trying to gain insights from the data of a non-Bellabeat company of how they use their fitness devices, then apply those insights to Bellabeat products to help our product grow
+
+**Who are my stakeholders?**
+
+* Urška Sršen - Bellabeat co-founder and Chief Creative Officer
+
+* Sando Mur - Bellabeat co-founder and key member of Bellabeat executive team
+
+* Bellabeat Marketing Analytics team
+
+# Phase 2:- Prepare
+
+We will load our datasets in this phase, but before that we need to load some packages in order to carry out our work.
+
+```{r = loading packages}
+library(tidyverse)
+library(lubridate)
+library(skimr)
+library(janitor)
+```
+
+We will now start importing csv files into R. I've seen all the csv files in excel, we will import only those files which are needed
+
+```{r = loading datasets}
+activities <- read_csv("dailyActivity_merged.csv")
+calories <- read_csv("dailyCalories_merged.csv")
+intensity <- read_csv("hourlyIntensities_merged.csv")
+sleep <- read_csv("sleepDay_merged.csv")
+weight <- read_csv("weightLogInfo_merged.csv")
+hourly_steps <- read_csv("hourlySteps_merged.csv")
+```
+Although I've viewed data in excel, we will view how data looks in R,just to make sure they are imported.
+```{r = Viewing data}
+head(activities)
+head(calories)
+head(intensity)
+head(sleep)
+head(weight)
+head(hourly_steps)
+```
+
+Here our prepare stage comes to an end.
+
+# Phase 3:- Process
+
+Firstly, we will see the number of unique id's in every table.
+```{r verifying unique ids}
+n_distinct(activities$Id)
+n_distinct(calories$Id)
+n_distinct(intensity$Id)
+n_distinct(sleep$Id)
+n_distinct(weight$Id)
+n_distinct(hourly_steps$Id)
+```
+By looking at the results obtained above, calories table is subset of activities table, so we can ignore it. Also weight dataset has data of 8 people, which cant be used for conclusive analysis, thus we will drop that table too.
+
+As seen here, name of the columns do not obey a consistent syntax, so will begin by changing it first. Then we will rename column activity_date as date for activity table. This is for activity table
+```{r = changing syntax of column names}
+activities <- clean_names(activities)
+activities <- activities %>%  rename(date = activity_date)
+```
+
+We will do the same thing with other tables as well
+```{r = changing column names}
+weight <- clean_names(weight)
+hourly_steps<- clean_names(hourly_steps)
+hourly_steps <- hourly_steps %>% rename(date_time = activity_hour)
+intensity <- clean_names(intensity)
+intensity <- intensity %>% rename(date_time = activity_hour)
+sleep <- clean_names(sleep)
+sleep<- sleep %>% rename(date_time = sleep_day)
+```
+ 
+
+Now, its time to make the dates consistent across every table.
+```{r = for activities table}
+activities$date=as.POSIXct(activities$date, format="%m/%d/%Y", tz=Sys.timezone())
+activities$date <- format(activities$date, format = "%m/%d/%y")
+colnames(activities)
+```
+For intensity table
+```{r = for intensity table}
+intensity$date_time=as.POSIXct(intensity$date_time, format="%m/%d/%Y%I:%M:%S %p", tz=Sys.timezone())
+intensity$time <- format(intensity$date_time, format = "%H:%M:%S")
+intensity$date <- format(intensity$date_time, format = "%m/%d/%y")
+colnames(intensity)
+```
+For sleep table
+```{r = sleep table}
+sleep$date_time = as.POSIXct(sleep$date_time, format = "%m/%d/%Y%I:%M:%S %p" , tz=Sys.timezone())
+sleep$date <- format(sleep$date_time, format = "%m/%d/%y")
+sleep$time <- format(sleep$date_time, format = "%H:%M:%S")
+colnames(sleep)
+```
+For hourly_steps
+```{r = hourly steps}
+hourly_steps %>% mutate(date_time = as.POSIXct(date_time,format ="%m/%d/%Y %I:%M:%S %p" , tz=Sys.timezone()))
+```
+
+We will now merge two table by using join
+
+```{r = merging two dates}
+merged_data <- merge(activities, sleep, by = c('id','date'))
+head(merged_data)
+str(merged_data)
+```
+This will make our visualization process easy.
+
+# Phase 4:- Analyze
+
+Now we will begin our analyze phase. We will calculate mean of steps, calories and sleep.
+
+```{r = classification of users}
+average_steps <- merged_data %>%  group_by(id) %>% drop_na() %>% summarise(mean_of_steps = mean(total_steps), mean_of_calories = mean(calories), mean_of_sleep = mean(total_minutes_asleep))
+head(average_steps)
+```
+Now we will classify them accordingly
+```{r}
+user_type <- average_steps %>% mutate(user_type = case_when(
+    mean_of_steps < 5000 ~ "sedentary",
+    mean_of_steps >= 5000 & mean_of_steps < 7499 ~ "lightly active", 
+    mean_of_steps >= 7500 & mean_of_steps < 9999 ~ "fairly active", 
+    mean_of_steps >= 10000 ~ "very active"
+  ))
+head(user_type)
+```
+Now, we will see what is the percentage share of each of the category types 
+```{r = percentage share}
+average_steps_percentage <- user_type %>% group_by(user_type) %>% summarise(total = n()) %>% mutate(totals = sum(total)) %>% group_by(user_type) %>% mutate(percentage = total/totals*100)
+head(average_steps_percentage)
+```
+Thus,from here its evident that most of the people lie in fairly active category. While the other categories share equal percentages.
+
+Now we will view our dataset by weekdays, but for that we will have to add a new column for weekday
+
+```{r = Adding Weekdays}
+sleep$weekday<- format(as.Date(sleep$date_time), "%A")
+merged_data <- merge(activities, sleep, by =c("id","date"))
+str(merged_data)
+```
+Now we will order this data according to days
+```{r}
+merged_data$weekday <- ordered(merged_data$weekday,levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+average_sleep <- merged_data %>%  group_by(weekday) %>% drop_na() %>%  summarise(avg_steps = mean(total_steps), avg_sleep =mean(total_minutes_asleep))
+head(average_sleep)
+```
+For hourly steps, we will separate date and time here
+```{r = sepearting date and time}
+hourly_steps <- hourly_steps %>% separate(date_time, into = c("date", "time"),sep = " ")
+hourly_steps$time <- ordered(hourly_steps$time, levels = c("12:00:00","1:00:00","2:00:00","3:00:00","4:00:00","5:00:00","6:00:00","7:00:00","8:00:00","9:00:00","10:00:00","11:00:00"))
+head(hourly_steps)
+```
+Now, we will classify them according to time
+```{r =classify}
+average_hourly_steps <- hourly_steps %>% group_by(time) %>% summarise(average_of_total_steps= mean(step_total))
+head(average_hourly_steps)
+```
+
+# Phase 5:- Share
+
+Now, we will start plotting the graphs.
+First, we will plot the graphs for total steps vs calories
+```{r calories vs total steps}
+ggplot(data = activities) + geom_point(mapping = aes(x= total_steps, y = calories)) + geom_smooth(mapping = aes(x= total_steps, y = calories)) + labs(tag = "1", title = "Calories Vs Total Steps", subtitle = "of fitbit users")
+```
+
+From the above graph, it is evident that
+
+* Calories and Total Steps have a positive correlation. More the steps, more the calories burned, which is quite understandable and also tells us that the data which we have is integrate.
+
+```{r = total_minutes_asleep vs total_time_in_bed }
+ggplot(data = merged_data) + geom_point(mapping = aes(x =total_minutes_asleep, y = total_time_in_bed)) + geom_smooth(mapping = aes(x =total_minutes_asleep, y = total_time_in_bed)) + labs(tag = "2", title = "Total minutes in bed vs total minutes asleep", subtitle = "of fitbit users")
+```
+Insights from the graph 
+
+* This graph shows a positive correlation between the two variables.
+
+* It also states that after waking up, people tend to sleep more, thereby spend some extra time on the bed. 
+```{r = graph 3}
+ggplot(data = average_sleep) + geom_bar(mapping = aes(x= weekday, y = avg_steps, fill = avg_steps), position = "dodge", stat = "identity") + scale_fill_gradient(low = "red", high = "green") + labs(tag = "3", title ="Average steps vs Weekday", subtitle = "of fitbit users")
+```
+Insights from the graph
+
+* People are usually most active on **Friday and Sunday**
+
+* People are least active on **Saturday**
+
+* People are moderately active during first four days of the week.
+
+```{r = graph 4}
+ggplot(data = average_sleep) +geom_col(mapping = aes(x = weekday, y = avg_sleep, fill = avg_sleep )) + scale_fill_gradient(low = "red", high = "green") + labs(tag ="4", title = "Average Sleep(in mins) vs Weekdays", subtitle = "of Fitbit Users")
+```
+
+Insights from the graph
+
+* Average sleep remains consistent across weekday, but its lowest on **Wednesday** and highest on **Saturday**.
+
+* Although in weekdays, **Tuesdays** sleep time of users is quite high as compared to other weekdays.
+
+```{r = graph 5}
+ggplot(data = average_hourly_steps) +geom_col(mapping = aes(x = time, y = average_of_total_steps,fill = average_of_total_steps)) + scale_fill_gradient(low = "red", high = "green") + labs(tag = "5", title = "Average of total sleep throughout a day", subtitle = "of Fitbit users") + theme(axis.text.x = element_text(angle = 90))
+```
+Insights from the graph.
+
+* People are mostly active after 6 in the morning.
+
+* Most people are active at **7:00:00** clock.
+
+* Least number of people are active at 3:00:00 clock.
+
+* People mainly remain dormant from **12:00:00 to 5:00:00** clock
+
+```{r = graph 6}
+ggplot(data = user_type) +geom_bar(mapping = aes(x = user_type, fill = user_type)) + labs(tag = "6", title = "Usertype count", subtitle = "of Fitbit users")
+```
+
+* Most users lie in **fairly active** category.
+
+* All the other users have equal no of count.
+
+```{r = graph 7}
+ggplot(data = user_type) + geom_col(mapping = aes(x = user_type, y = mean_of_sleep, fill = user_type)) + labs(tag = "7", title = "Mean of sleep vs Usertype", subtitle = "of fitbit users")
+```
+Insights from the graph
+
+* Its observed that **fairly active people** sleep the most.
+
+* **Lightly active** people sleep the least.
+
+* Its astonishing to see that people who walk less, also sleep less, i.e sedentary users.
+
+# Phase 6:- Act
+
+**After analyzing the FitBit data, here are the recommendations I would like to share**
+
+* During the analysis, I classified people into four different categories according to number of steps in a day. So, Bellabeat can have this feature installed in their **Time Watch** so that people can know in which category they belong.
+
+* If the number of steps are less, they can be reminded that you need to walk more. This is because according to research people who walk more than 8000 steps a day, lower their chances of getting any cardiovascular disease.
+
+* They can set a goal for everyone by having a feature which can reward them if they walk more than 8000 steps, such a supercoins, which can be collected over a period of time by walking, and after having a certain number of these coins, they can get a discount on other products of Bellabeat. This can increase their market presence.
+
+* If the users want to increase their sleep time, then Bellabeat can remind people go to bed through a notification on watch or in the phone, thus help them increasing their sleep time.
+
+* They can also make the design of the products sleek and stylish, also make them water resistant so that it can catch the eyes of the customers through advertisements,
+
